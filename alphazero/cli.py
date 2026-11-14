@@ -5,11 +5,15 @@ from __future__ import annotations
 import argparse
 import sys
 
-import chess
+from typing import TYPE_CHECKING
 
-from .checkpoint import latest_checkpoint, load_model
 from .config import PRESETS, Config, get_preset, resolve_device
-from .network import AlphaZeroNet
+
+if TYPE_CHECKING:
+    from .network import AlphaZeroNet
+
+# chess, torch and the model code are imported inside the commands, so that
+# `alphazero uci` answers the GUI's first "uci" without waiting for torch to load.
 
 
 def _add_model_args(p: argparse.ArgumentParser) -> None:
@@ -20,6 +24,9 @@ def _add_model_args(p: argparse.ArgumentParser) -> None:
 
 
 def _load(args: argparse.Namespace) -> tuple[AlphaZeroNet, Config]:
+    from .checkpoint import latest_checkpoint, load_model
+    from .network import AlphaZeroNet
+
     device = resolve_device(args.device)
     path = args.checkpoint or latest_checkpoint(args.checkpoint_dir)
     if path is None:
@@ -53,6 +60,8 @@ def cmd_train(args: argparse.Namespace) -> int:
 
 
 def cmd_play(args: argparse.Namespace) -> int:
+    import chess
+
     from .evaluation import MCTSPlayer, parse_human_move
 
     model, cfg = _load(args)
@@ -140,7 +149,22 @@ def build_parser() -> argparse.ArgumentParser:
     e.add_argument("--skill-level", type=int, default=0, help="Stockfish skill level 0-20")
     e.add_argument("--stockfish-time", type=float, default=0.05, help="Seconds per Stockfish move")
     e.set_defaults(func=cmd_evaluate)
+
+    u = sub.add_parser("uci", help="Run as a UCI engine for chess GUIs (En Croissant, Cute Chess...)")
+    u.add_argument("--checkpoint", help="Checkpoint file (default: latest in --checkpoint-dir)")
+    u.add_argument("--checkpoint-dir",
+                   help="Default: ./checkpoints if it exists, else checkpoints/ in the repo")
+    u.add_argument("--simulations", type=int,
+                   help="MCTS simulations for 'go' without a time limit (default: from checkpoint)")
+    u.add_argument("--device", default="auto", help="auto, cpu, cuda or mps")
+    u.set_defaults(func=cmd_uci)
     return parser
+
+
+def cmd_uci(args: argparse.Namespace) -> int:
+    from .uci import run_engine
+
+    return run_engine(args)
 
 
 def main(argv: list[str] | None = None) -> int:

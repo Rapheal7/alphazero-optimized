@@ -67,9 +67,8 @@ class MCTS:
             key=lambda ch: ch.q + c * ch.prior * sqrt_n / (1 + ch.visit_count),
         )
 
-    def search(self, board: chess.Board, add_noise: bool = True,
-               num_simulations: int | None = None) -> np.ndarray:
-        """Run simulations from ``board`` and return root visit counts per action."""
+    def new_root(self, board: chess.Board, add_noise: bool = False) -> Node:
+        """Expand and return a root for ``board``, ready for :meth:`simulate`."""
         if terminal_value(board) is not None:
             raise ValueError("search() called on a finished game")
         self.model.eval()
@@ -77,28 +76,39 @@ class MCTS:
         self._expand(root, board)
         if add_noise:
             self._add_dirichlet_noise(root)
+        return root
 
+    def simulate(self, root: Node, scratch: chess.Board) -> int:
+        """Run one simulation from ``root``. ``scratch`` must hold the root position
+        and is restored before returning. Returns the depth of the leaf reached."""
+        node, path = root, [root]
+        while node.is_expanded():
+            node = self._select(node)
+            scratch.push(node.move)
+            path.append(node)
+
+        value = terminal_value(scratch)
+        if value is None:
+            value = self._expand(node, scratch)
+
+        # `value` is for the side to move at the leaf; the leaf's stats belong
+        # to the player who moved into it, so start with the opposite sign.
+        v = -value
+        for n in reversed(path):
+            n.visit_count += 1
+            n.value_sum += v
+            v = -v
+        for _ in range(len(path) - 1):
+            scratch.pop()
+        return len(path) - 1
+
+    def search(self, board: chess.Board, add_noise: bool = True,
+               num_simulations: int | None = None) -> np.ndarray:
+        """Run simulations from ``board`` and return root visit counts per action."""
+        root = self.new_root(board, add_noise)
         scratch = board.copy()
         for _ in range(num_simulations or self.cfg.num_simulations):
-            node, path = root, [root]
-            while node.is_expanded():
-                node = self._select(node)
-                scratch.push(node.move)
-                path.append(node)
-
-            value = terminal_value(scratch)
-            if value is None:
-                value = self._expand(node, scratch)
-
-            # `value` is for the side to move at the leaf; the leaf's stats belong
-            # to the player who moved into it, so start with the opposite sign.
-            v = -value
-            for n in reversed(path):
-                n.visit_count += 1
-                n.value_sum += v
-                v = -v
-            for _ in range(len(path) - 1):
-                scratch.pop()
+            self.simulate(root, scratch)
 
         visits = np.zeros(ACTION_SIZE, dtype=np.float32)
         for action, child in root.children.items():

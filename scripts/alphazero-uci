@@ -1,0 +1,12 @@
+#!/bin/sh
+# Launcher for chess GUIs (En Croissant, Cute Chess, Arena...): point the GUI's
+# "add engine" dialog at this file. It uses the repo's .venv when there is one,
+# so the GUI doesn't need to know about Python. Extra arguments are passed on,
+# e.g. --checkpoint path/to/checkpoint_iter_0050.pt --device cpu
+REPO="$(cd "$(dirname "$0")/.." && pwd)"
+if [ -x "$REPO/.venv/bin/python" ]; then
+  PYTHON="$REPO/.venv/bin/python"
+else
+  PYTHON="${PYTHON:-python3}"
+fi
+exec "$PYTHON" "$REPO/scripts/uci.py" "$@"

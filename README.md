@@ -16,9 +16,11 @@ alphazero/
   training.py    Replay buffer, loss, training loop, LR schedule, resume
   checkpoint.py  Save / load / find the latest checkpoint
   evaluation.py  Players (model, random, Stockfish), matches, scoring
-  cli.py         `alphazero train | play | evaluate`
-scripts/         train.py, play.py, evaluate.py: thin wrappers around the CLI
-tests/           pytest: encoding, MCTS, end-to-end tiny training run
+  uci.py         UCI engine front end for chess GUIs (En Croissant, Cute Chess, Arena)
+  cli.py         `alphazero train | play | evaluate | uci`
+scripts/         train.py, play.py, evaluate.py, uci.py: thin wrappers around the CLI
+                 alphazero-uci: launcher to point a chess GUI at
+tests/           pytest: encoding, MCTS, UCI protocol, end-to-end tiny training run
 notebooks/
   AlphaZeroChess_Colab.ipynb   Clone + install + train / evaluate / play in Colab
   archive/                     The original exploratory notebooks, unchanged
@@ -72,6 +74,34 @@ After `pip install -e .`, the same commands are available as `alphazero train`, 
 | `colab` | 10 blocks × 128 ch | 200       | 25         | 100        | GPU (Colab)           |
 
 Self-play games longer than `--max-moves` plies are stopped and scored as a draw. This keeps CPU runs short, because untrained networks rarely finish a game.
+
+## Use it in a chess GUI (UCI)
+
+The engine speaks UCI, so any UCI GUI can load it. In [En Croissant](https://encroissant.org): **Engines → Add new → Local**, then pick the launcher:
+
+- macOS / Linux: `scripts/alphazero-uci` in this repo. It uses the repo's `.venv` if there is one.
+- Windows: run `pip install -e .`, then pick `.venv\Scripts\alphazero-uci.exe`.
+
+It loads the latest checkpoint in `checkpoints/` (or `./checkpoints` if the GUI starts it somewhere that has one). To pick a checkpoint, set the engine's **Checkpoint** option to a `.pt` path, or pass arguments to the launcher: `scripts/alphazero-uci --checkpoint checkpoints/checkpoint_iter_0050.pt --device cpu`. Without a checkpoint it plays with an untrained network.
+
+| UCI option | Meaning |
+|---|---|
+| Checkpoint | `.pt` file to load (empty: latest in `checkpoints/`) |
+| Device | auto, cpu, cuda or mps |
+| Simulations | Simulations for `go depth N` or a bare `go` (0: the checkpoint's `num_simulations`) |
+| Move Overhead | Milliseconds kept back from each timed move for GUI/IPC lag |
+
+MCTS has no search depth, so `go depth N` runs the **Simulations** budget. `go nodes N` runs exactly N simulations, `go movetime`, `wtime`/`btime`/`winc`/`binc`/`movestogo` search for a share of the clock, and `go infinite` (the GUI's analysis mode) runs until `stop`. Each `info` line reports `nodes` as simulations, `depth` as the average leaf depth, and `score cp` converted from the MCTS value.
+
+You can also talk to it by hand:
+
+```bash
+python scripts/uci.py
+uci
+position startpos moves e2e4
+go movetime 1000
+quit
+```
 
 ## Colab
 

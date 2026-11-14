@@ -8,9 +8,10 @@ fields) for a real training run on a GPU.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, fields, replace
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import torch
+if TYPE_CHECKING:
+    import torch
 
 
 @dataclass
@@ -98,6 +99,8 @@ def get_preset(name: str) -> Config:
 
 def resolve_device(name: str = "auto") -> torch.device:
     """``auto`` picks CUDA when available, otherwise CPU."""
+    import torch  # deferred so importing the config does not load torch
+
     if name == "auto":
         return torch.device("cuda" if torch.cuda.is_available() else "cpu")
     return torch.device(name)
