@@ -12,6 +12,7 @@ alphazero/
   game.py        Board encoding (18x8x8), move <-> action index (4544 actions), terminal values
   network.py     AlphaZeroNet: ResNet trunk, policy head (logits) and value head (tanh)
   mcts.py        PUCT tree search with Dirichlet noise at the root
+  batched_mcts.py  Faster search: batched leaves with virtual loss, tree reuse, fp16 on GPU
   selfplay.py    Self-play games -> (state, visit distribution, result) examples
   training.py    Replay buffer, loss, training loop, LR schedule, resume
   checkpoint.py  Save / load / find the latest checkpoint
@@ -138,3 +139,19 @@ The tests check that the move encoding covers every legal move with no collision
 - **Encoding:** 12 piece planes, side to move, 4 castling-rights planes and the halfmove clock, from White's point of view. The policy covers every from/to square pair, plus a separate index for each promotion piece.
 - **Search:** PUCT selection `Q + c_puct · P · √N_parent / (1 + N)`. The network gives priors and a value at each new leaf, and finished games use their true result. Values flip sign at each ply on the way back up. Dirichlet noise is added at the root during self-play only.
 - **Training targets:** the root visit distribution (policy) and the game result from the point of view of the side to move (value). Loss is `(z − v)² − π·log p`, using Adam with weight decay and a step LR schedule.
+
+### Faster search (`batched_mcts.py`)
+
+`BatchedMCTS` takes the same arguments as `MCTS` and has the same `search()` method, but it's faster:
+
+- **Batched leaves with virtual loss:** each step walks up to `batch_size` paths before calling the network. Each node on a pending path gets a temporary visit and loss, so the next path goes somewhere else. Then all the new leaves are evaluated in one forward pass.
+- **Tree reuse:** after a move, the subtree under it becomes the next root, so its visits carry over. That means the visit counts can add up to more than `num_simulations`.
+- **Inference mode, and fp16 autocast on CUDA**, for the network calls.
+
+Its `play_game` / `generate_games` match `selfplay.py`, so to use it in training, change the import in `training.py`:
+
+```python
+from .batched_mcts import generate_games
+```
+
+On a laptop CPU with the `colab`-size network, `batch_size=8` runs about 2x as many simulations per second as `MCTS` (roughly 1,100 vs 530). Larger batches can be slower on CPU, because PyTorch's CPU convolutions slow down sharply at batch 16 on some machines. On a GPU, try 16 to 64.
