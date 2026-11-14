@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "alphazero-chess"
+version = "0.1.0"
+description = "AlphaZero-style chess engine: self-play, MCTS and a residual policy/value network."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.1",
+    "numpy>=1.24",
+    "chess>=1.10",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[project.scripts]
+alphazero = "alphazero.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["alphazero*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
