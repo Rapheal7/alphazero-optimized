@@ -115,3 +115,42 @@ def test_q_to_centipawns():
     assert q_to_centipawns(0.0) == 0
     assert q_to_centipawns(0.5) > 0 > q_to_centipawns(-0.5)
     assert q_to_centipawns(1.0) == -q_to_centipawns(-1.0)
+
+
+def _play_one_move(engine, out):
+    engine.handle("go nodes 4")
+    return _wait_for_bestmove(out)
+
+
+def test_missing_checkpoint_does_not_crash(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    engine, out = _engine(tmp_path)
+    engine.handle("setoption name Checkpoint value model_5_20_256_parallel_chess.pt")
+    assert _play_one_move(engine, out).startswith("bestmove ")
+    assert any("not found" in line and "untrained" in line for line in _lines(out))
+
+
+def test_notebook_checkpoint_is_rejected_with_a_clear_message(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    # The archived notebooks save {'episode', 'model_state', 'optim_state'}.
+    torch.save({"episode": 5, "model_state": {"conv1.weight": torch.zeros(1)}, "optim_state": {}},
+               tmp_path / "model_5_20_256_parallel_chess.pt")
+    engine, out = _engine(tmp_path)
+    engine.handle("setoption name Checkpoint value model_5_20_256_parallel_chess.pt")
+    assert _play_one_move(engine, out).startswith("bestmove ")
+    assert any("archived notebooks" in line for line in _lines(out))
+
+
+def test_bare_checkpoint_name_is_found_in_checkpoint_dir(tmp_path, monkeypatch):
+    from alphazero.checkpoint import save_checkpoint
+    from alphazero.config import get_preset
+    from alphazero.network import AlphaZeroNet
+
+    cfg = get_preset("tiny")
+    save_checkpoint(tmp_path / "ckpts" / "mine.pt", AlphaZeroNet.from_config(cfg), cfg, 3)
+    monkeypatch.chdir(tmp_path)  # the GUI's working directory: no file here
+    out = io.StringIO()
+    engine = UCIEngine(checkpoint_dir=tmp_path / "ckpts", device="cpu", out=out)
+    engine.handle("setoption name Checkpoint value mine.pt")
+    assert _play_one_move(engine, out).startswith("bestmove ")
+    assert any("loaded" in line and "iteration 3" in line for line in _lines(out))
