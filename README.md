@@ -39,6 +39,24 @@ pip install -r requirements.txt     # or: pip install -e ".[dev]"  (adds the `al
 
 Stockfish is optional. You only need it to evaluate against Stockfish: `brew install stockfish` or `sudo apt-get install stockfish`.
 
+### Installing to a folder you choose
+
+By default pip installs into the active environment. To put the package somewhere else:
+
+```bash
+# Install into a folder of your choice (package plus its bin/ commands)
+pip install --target path/to/dir .
+PYTHONPATH=path/to/dir path/to/dir/bin/alphazero --help
+
+# Or make the virtual environment wherever you want it
+python -m venv path/to/env && path/to/env/bin/pip install .
+
+# Or just build the wheel into a folder, without installing it
+pip wheel --no-deps . -w path/to/dist
+```
+
+`--target` installs the dependencies (PyTorch included) into that folder too; add `--no-deps` if they're already installed.
+
 ## Run
 
 ```bash
