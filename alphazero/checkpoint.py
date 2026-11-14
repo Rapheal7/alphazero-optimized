@@ -59,15 +59,18 @@ def load_checkpoint(path: str | Path, device: torch.device | str = "cpu") -> dic
 
 
 def load_model(path: str | Path, device: torch.device | str = "cpu") -> tuple[AlphaZeroNet, Config, dict]:
+    """Load a model for play. Also accepts checkpoints from the archived
+    AlphaZeroChess2 notebook (see :mod:`alphazero.legacy`)."""
+    from .legacy import is_notebook_checkpoint, notebook_model_from_checkpoint
+
     ckpt = load_checkpoint(path, device)
+    if is_notebook_checkpoint(ckpt):
+        model = notebook_model_from_checkpoint(ckpt, path).to(device).eval()
+        ckpt.setdefault("iteration", ckpt.get("episode", 0))
+        cfg = Config(num_res_blocks=model.arch["num_res_blocks"], num_channels=model.arch["num_channels"])
+        return model, cfg, ckpt
     if not isinstance(ckpt, dict) or "arch" not in ckpt or "model_state_dict" not in ckpt:
-        if isinstance(ckpt, dict) and "model_state" in ckpt:
-            raise ValueError(
-                f"{path} was saved by one of the archived notebooks, whose network "
-                "(14 input planes, different layers and move encoding) doesn't match "
-                "this package. Train a new one with `alphazero train`."
-            )
-        raise ValueError(f"{path} isn't a checkpoint saved by `alphazero train`")
+        raise ValueError(f"{path} isn't a checkpoint saved by `alphazero train` or the AlphaZeroChess2 notebook")
     model = AlphaZeroNet(**ckpt["arch"])
     model.load_state_dict(ckpt["model_state_dict"])
     model.to(device).eval()

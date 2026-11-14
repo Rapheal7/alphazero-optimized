@@ -103,6 +103,8 @@ The engine speaks UCI, so any UCI GUI can load it. In [En Croissant](https://enc
 
 It loads the latest checkpoint in `checkpoints/` (or `./checkpoints` if the GUI starts it somewhere that has one). To pick a checkpoint, set the engine's **Checkpoint** option to a `.pt` path, or pass arguments to the launcher: `scripts/alphazero-uci --checkpoint checkpoints/checkpoint_iter_0050.pt --device cpu`. Without a checkpoint it plays with an untrained network.
 
+Checkpoints from the archived AlphaZeroChess2 notebook (`model_<iter>_<blocks>_<channels>_parallel_chess.pt`) load too. `alphazero/legacy.py` rebuilds that notebook's 14-plane network and fixes two of its training quirks (see the module docstring). A relative **Checkpoint** value is looked up in the working directory, then `checkpoints/`, then the repo root. If a checkpoint can't be loaded, the engine says why in an `info string` and plays with an untrained network.
+
 | UCI option | Meaning |
 |---|---|
 | Checkpoint | `.pt` file to load (empty: latest in `checkpoints/`) |

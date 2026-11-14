@@ -130,15 +130,15 @@ def test_missing_checkpoint_does_not_crash(tmp_path, monkeypatch):
     assert any("not found" in line and "untrained" in line for line in _lines(out))
 
 
-def test_notebook_checkpoint_is_rejected_with_a_clear_message(tmp_path, monkeypatch):
+def test_unloadable_checkpoint_is_reported_not_fatal(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    # The archived notebooks save {'episode', 'model_state', 'optim_state'}.
+    # Notebook-style keys, but not the layers NotebookNet can load.
     torch.save({"episode": 5, "model_state": {"conv1.weight": torch.zeros(1)}, "optim_state": {}},
                tmp_path / "model_5_20_256_parallel_chess.pt")
     engine, out = _engine(tmp_path)
     engine.handle("setoption name Checkpoint value model_5_20_256_parallel_chess.pt")
     assert _play_one_move(engine, out).startswith("bestmove ")
-    assert any("archived notebooks" in line for line in _lines(out))
+    assert any("could not load" in line and "untrained" in line for line in _lines(out))
 
 
 def test_bare_checkpoint_name_is_found_in_checkpoint_dir(tmp_path, monkeypatch):
