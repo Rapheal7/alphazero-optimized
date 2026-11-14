@@ -152,16 +152,43 @@ class UCIEngine:
         from .network import AlphaZeroNet
 
         device = resolve_device(self.device)
-        path = Path(self.checkpoint) if self.checkpoint else latest_checkpoint(self.checkpoint_dir)
-        if path is None:
-            self.info_string(f"no checkpoint in {self.checkpoint_dir}; using an untrained network")
+        model = cfg = None
+        if self.checkpoint:
+            path = self._resolve_checkpoint(self.checkpoint)
+            if path is None:
+                tried = ", ".join(str(p) for p in self._checkpoint_candidates(self.checkpoint))
+                self.info_string(f"checkpoint {self.checkpoint} not found (looked in: {tried}); "
+                                 "using an untrained network")
+        else:
+            path = latest_checkpoint(self.checkpoint_dir)
+            if path is None:
+                self.info_string(f"no checkpoint in {self.checkpoint_dir}; using an untrained network")
+        if path is not None:
+            # A bad checkpoint must not take the engine (and the GUI's game) down with it.
+            try:
+                model, cfg, ckpt = load_model(path, device)
+                self.info_string(f"loaded {path} (iteration {ckpt['iteration']}) on {device}")
+            except Exception as e:  # noqa: BLE001
+                self.info_string(f"could not load checkpoint {path}: {e}; using an untrained network")
+        if model is None:
             cfg = Config()
             model = AlphaZeroNet.from_config(cfg).to(device).eval()
-        else:
-            model, cfg, ckpt = load_model(path, device)
-            self.info_string(f"loaded {path} (iteration {ckpt['iteration']}) on {device}")
         self._cfg = cfg
         self._mcts = MCTS(model, cfg)
+
+    def _checkpoint_candidates(self, name: str) -> list[Path]:
+        """Where a Checkpoint value may point. GUIs start engines in their own working
+        directory, so a bare file name is also looked up in the checkpoint folder and
+        at the repo root."""
+        path = Path(name).expanduser()
+        if path.is_absolute():
+            return [path]
+        repo_root = Path(__file__).resolve().parents[1]
+        candidates = [Path.cwd() / path, self.checkpoint_dir / path, repo_root / path]
+        return list(dict.fromkeys(p.resolve() for p in candidates))
+
+    def _resolve_checkpoint(self, name: str) -> Path | None:
+        return next((p for p in self._checkpoint_candidates(name) if p.is_file()), None)
 
     def _reset_model(self) -> None:
         self._stop_search()
