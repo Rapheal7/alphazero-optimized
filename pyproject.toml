@@ -19,6 +19,7 @@ dev = ["pytest>=7"]
 
 [project.scripts]
 alphazero = "alphazero.cli:main"
+alphazero-uci = "alphazero.uci:main"
 
 [tool.setuptools.packages.find]
 include = ["alphazero*"]
