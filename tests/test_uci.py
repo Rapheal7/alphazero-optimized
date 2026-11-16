@@ -154,3 +154,18 @@ def test_bare_checkpoint_name_is_found_in_checkpoint_dir(tmp_path, monkeypatch):
     engine.handle("setoption name Checkpoint value mine.pt")
     assert _play_one_move(engine, out).startswith("bestmove ")
     assert any("loaded" in line and "iteration 3" in line for line in _lines(out))
+
+
+def test_unavailable_device_falls_back_to_cpu(tmp_path):
+    from alphazero.config import device_problem
+
+    if device_problem(torch.device("cuda")) is None:
+        import pytest
+        pytest.skip("CUDA is available here")
+    engine, out = _engine(tmp_path)
+    engine.handle("setoption name Device value cuda")
+    engine.handle("isready")
+    assert _lines(out)[-1] == "readyok"
+    assert any("can't use device 'cuda'" in line and "using cpu" in line for line in _lines(out))
+    engine.handle("go nodes 4")
+    assert _wait_for_bestmove(out).startswith("bestmove ")

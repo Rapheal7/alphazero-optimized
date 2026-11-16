@@ -97,10 +97,37 @@ def get_preset(name: str) -> Config:
     return replace(PRESETS[name])
 
 
+class DeviceUnavailableError(ValueError):
+    """The requested device can't be used with this machine or PyTorch build."""
+
+
+def device_problem(device: torch.device) -> str | None:
+    """Why ``device`` can't be used here, or ``None`` if it can."""
+    import torch
+
+    if device.type == "cuda":
+        if torch.version.cuda is None:
+            return (f"this PyTorch build ({torch.__version__}) has no CUDA support; install a "
+                    "CUDA build (see https://pytorch.org/get-started/locally/)")
+        if not torch.cuda.is_available():
+            return "PyTorch has CUDA support, but no CUDA GPU or driver was found"
+    elif device.type == "mps" and not torch.backends.mps.is_available():
+        return "MPS (Apple GPU) isn't available on this machine"
+    return None
+
+
 def resolve_device(name: str = "auto") -> torch.device:
-    """``auto`` picks CUDA when available, otherwise CPU."""
+    """``auto`` picks CUDA when available, otherwise CPU.
+
+    Raises :class:`DeviceUnavailableError` (with the reason) for an explicit
+    device that can't be used, instead of failing later inside PyTorch.
+    """
     import torch  # deferred so importing the config does not load torch
 
     if name == "auto":
         return torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    return torch.device(name)
+    device = torch.device(name)
+    problem = device_problem(device)
+    if problem:
+        raise DeviceUnavailableError(f"can't use device {name!r}: {problem}")
+    return device

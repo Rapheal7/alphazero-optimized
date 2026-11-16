@@ -27,3 +27,15 @@ def test_cli_train_then_evaluate(tmp_path, capsys):
     assert main(["evaluate", "--checkpoint-dir", ck, "--games", "2",
                  "--simulations", "4", "--max-moves", "10"]) == 0
     assert "Result vs random" in capsys.readouterr().out
+
+
+def test_cli_reports_unavailable_device(tmp_path, capsys):
+    import torch
+
+    from alphazero.config import device_problem
+
+    if device_problem(torch.device("cuda")) is None:
+        import pytest
+        pytest.skip("CUDA is available here")
+    assert main(["train", "--preset", "tiny", "--checkpoint-dir", str(tmp_path), "--device", "cuda"]) == 2
+    assert "can't use device 'cuda'" in capsys.readouterr().err
