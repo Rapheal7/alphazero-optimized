@@ -147,11 +147,16 @@ class UCIEngine:
         if self._mcts is not None:
             return
         from .checkpoint import latest_checkpoint, load_model
-        from .config import Config, resolve_device
+        from .config import Config, DeviceUnavailableError, resolve_device
         from .mcts import MCTS
         from .network import AlphaZeroNet
 
-        device = resolve_device(self.device)
+        try:
+            device = resolve_device(self.device)
+        except DeviceUnavailableError as e:
+            # Keep the engine alive for the GUI: say why, then play on the CPU.
+            self.info_string(f"{e}; using cpu")
+            device = resolve_device("cpu")
         model = cfg = None
         if self.checkpoint:
             path = self._resolve_checkpoint(self.checkpoint)

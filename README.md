@@ -40,6 +40,15 @@ pip install -r requirements.txt     # or: pip install -e ".[dev]"  (adds the `al
 
 Stockfish is optional. You only need it to evaluate against Stockfish: `brew install stockfish` or `sudo apt-get install stockfish`.
 
+For an NVIDIA GPU, PyTorch must be a CUDA build. `pip install torch` gives a CPU-only build on Windows. Install from PyTorch's CUDA index instead (pick the CUDA version for your driver at https://pytorch.org/get-started/locally/), for example:
+
+```bash
+pip install --force-reinstall torch --index-url https://download.pytorch.org/whl/cu128
+python -c "import torch; print(torch.__version__, torch.version.cuda, torch.cuda.is_available())"
+```
+
+The last line should print a CUDA version and `True`. If you ask for `--device cuda` (or the UCI **Device** option) without a working CUDA setup, the CLI exits with the reason, and the UCI engine reports it in an `info string` and runs on the CPU.
+
 ### Installing to a folder you choose
 
 By default pip installs into the active environment. To put the package somewhere else:
@@ -108,7 +117,7 @@ Checkpoints from the archived AlphaZeroChess2 notebook (`model_<iter>_<blocks>_<
 | UCI option | Meaning |
 |---|---|
 | Checkpoint | `.pt` file to load (empty: latest in `checkpoints/`) |
-| Device | auto, cpu, cuda or mps |
+| Device | auto, cpu, cuda or mps (falls back to cpu, with an `info string`, if unavailable) |
 | Simulations | Simulations for `go depth N` or a bare `go` (0: the checkpoint's `num_simulations`) |
 | Move Overhead | Milliseconds kept back from each timed move for GUI/IPC lag |
 
