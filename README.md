@@ -147,7 +147,7 @@ The tests check that the move encoding covers every legal move with no collision
 
 ## How it works
 
-- **Encoding:** 12 piece planes, side to move, 4 castling-rights planes and the halfmove clock, from White's point of view. The policy covers every from/to square pair, plus a separate index for each promotion piece.
+- **Encoding:** 12 piece planes, side to move, 4 castling-rights planes, the halfmove clock and 2 repetition planes (the position has occurred once / twice before), from White's point of view. The policy covers every from/to square pair, plus a separate index for each promotion piece.
 - **Search:** PUCT selection `Q + c_puct · P · √N_parent / (1 + N)`. The network gives priors and a value at each new leaf, and finished games use their true result. Values flip sign at each ply on the way back up. Dirichlet noise is added at the root during self-play only.
 - **Training targets:** the root visit distribution (policy) and the game result from the point of view of the side to move (value). Loss is `(z − v)² − π·log p`, using Adam with weight decay and a step LR schedule.
 

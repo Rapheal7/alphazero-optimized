@@ -100,3 +100,20 @@ def test_material_balance_and_adjudicated_value():
     assert material_balance(pawn_down) == -1
     assert -0.25 < adjudicated_value(pawn_down, 5.0) < 0.0
     assert adjudicated_value(queen_up, 0.0) == 0.0  # scale 0: a plain draw
+
+
+def test_repetition_planes_count_earlier_occurrences():
+    board = chess.Board()
+    assert not encode_board(board)[18:].any()
+    for uci in ["g1f3", "g8f6", "f3g1"]:
+        board.push_uci(uci)
+        assert not encode_board(board)[18:].any()
+    board.push_uci("f6g8")  # back to the start: seen once before
+    planes = encode_board(board)
+    assert planes[18].all() and not planes[19].any()
+    for uci in ["g1f3", "g8f6", "f3g1", "f6g8"]:  # and again: seen twice before
+        board.push_uci(uci)
+    planes = encode_board(board)
+    assert planes[18].all() and planes[19].all()
+    board.push_uci("e2e4")
+    assert not encode_board(board)[18:].any()

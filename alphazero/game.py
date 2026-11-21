@@ -9,8 +9,9 @@ from __future__ import annotations
 import chess
 import numpy as np
 
-# 12 piece planes + side to move + 4 castling rights + halfmove clock.
-NUM_PLANES = 18
+# 12 piece planes + side to move + 4 castling rights + halfmove clock
+# + 2 repetition planes.
+NUM_PLANES = 20
 
 _PROMOTION_PIECES = "qrbn"
 
@@ -72,7 +73,11 @@ def encode_board(board: chess.Board) -> np.ndarray:
     Planes 0-5: white P N B R Q K. Planes 6-11: black p n b r q k.
     Row 0 is rank 8 (the board as printed). Plane 12 is 1 when white is to move.
     Planes 13-16 are castling rights (white K/Q side, black K/Q side). Plane 17 is
-    the halfmove clock divided by 100.
+    the halfmove clock divided by 100. Plane 18 is 1 when the position has
+    occurred before (one more repetition is a draw), plane 19 when it has occurred
+    at least twice before. Without them the network can't tell a position it is
+    about to draw by repetition from the same position seen fresh. Networks
+    trained before these planes were added read only planes 0-17.
     """
     planes = np.zeros((NUM_PLANES, 8, 8), dtype=np.float32)
     for square, piece in board.piece_map().items():
@@ -85,6 +90,10 @@ def encode_board(board: chess.Board) -> np.ndarray:
     planes[15] = float(board.has_kingside_castling_rights(chess.BLACK))
     planes[16] = float(board.has_queenside_castling_rights(chess.BLACK))
     planes[17] = min(board.halfmove_clock, 100) / 100.0
+    if board.is_repetition(2):
+        planes[18] = 1.0
+        if board.is_repetition(3):
+            planes[19] = 1.0
     return planes
 
 

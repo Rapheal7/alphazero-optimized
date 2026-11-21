@@ -110,3 +110,27 @@ def test_notebook_model_plays_through_uci(tmp_path, monkeypatch):
         assert time.monotonic() < end
         time.sleep(0.01)
     assert "loaded" in out.getvalue() and "iteration 5" in out.getvalue()
+
+
+def test_checkpoint_from_before_the_repetition_planes_still_loads(tmp_path):
+    from alphazero.checkpoint import save_checkpoint
+    from alphazero.config import get_preset
+    from alphazero.network import AlphaZeroNet
+
+    cfg = get_preset("tiny")
+    torch.manual_seed(0)
+    old = AlphaZeroNet(cfg.num_res_blocks, cfg.num_channels, in_planes=18).eval()
+    save_checkpoint(tmp_path / "old.pt", old, cfg, 1)
+    model, _, _ = load_model(tmp_path / "old.pt")
+    assert model.arch["in_planes"] == 18
+
+    board = chess.Board()
+    for uci in ["g1f3", "g8f6", "f3g1", "f6g8"]:  # repetition planes set
+        board.push_uci(uci)
+    planes = encode_board(board)
+    assert planes.shape[0] > 18 and planes[18].all()
+    logits, value = model.predict(planes)
+    with torch.no_grad():
+        ref_logits, ref_value = old(torch.from_numpy(planes[:18]).unsqueeze(0))
+    assert np.allclose(logits, ref_logits[0].numpy(), atol=1e-6)
+    assert abs(value - ref_value.item()) < 1e-6

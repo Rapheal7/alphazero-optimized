@@ -76,7 +76,9 @@ class AlphaZeroNet(nn.Module):
         return cls(num_res_blocks=cfg.num_res_blocks, num_channels=cfg.num_channels)
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        x = self.trunk(self.stem(x))
+        # A network saved before planes were appended to the encoding (in_planes
+        # 18, without the repetition planes) reads only the planes it knows.
+        x = self.trunk(self.stem(x[:, :self.arch["in_planes"]]))
         return self.policy_head(x), self.value_head(x)
 
     @torch.no_grad()
