@@ -50,6 +50,8 @@ def cmd_train(args: argparse.Namespace) -> int:
         train_steps_per_iteration=args.train_steps,
         batch_size=args.batch_size,
         max_moves=args.max_moves,
+        selfplay_workers=args.workers,
+        mcts_batch_size=args.mcts_batch,
         lr=args.lr,
         checkpoint_dir=args.checkpoint_dir,
         device=args.device,
@@ -129,6 +131,9 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--batch-size", type=int)
     t.add_argument("--max-moves", type=int, help="Plies before a self-play game is scored as a draw")
     t.add_argument("--lr", type=float)
+    t.add_argument("--workers", type=int,
+                   help="Self-play processes (default: one per CPU core on CPU, 1 on GPU)")
+    t.add_argument("--mcts-batch", type=int, help="Leaves per network call in self-play search")
     t.add_argument("--checkpoint-dir", default="checkpoints")
     t.add_argument("--device", default="auto", help="auto, cpu, cuda or mps")
     t.add_argument("--seed", type=int)

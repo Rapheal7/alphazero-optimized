@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import copy
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -86,3 +88,35 @@ class AlphaZeroNet(nn.Module):
         x = torch.from_numpy(planes).unsqueeze(0).to(device)
         logits, value = self(x)
         return logits[0].float().cpu().numpy(), float(value.item())
+
+
+def _fold_bn(conv: nn.Conv2d, bn: nn.BatchNorm2d) -> nn.Conv2d:
+    """A conv computing ``bn(conv(x))`` in eval mode, with the batch norm folded in."""
+    scale = bn.weight / torch.sqrt(bn.running_var + bn.eps)
+    fused = nn.Conv2d(conv.in_channels, conv.out_channels, conv.kernel_size,
+                      padding=conv.padding, bias=True).to(conv.weight.device)
+    bias = conv.bias if conv.bias is not None else torch.zeros_like(bn.running_mean)
+    with torch.no_grad():
+        fused.weight.copy_(conv.weight * scale[:, None, None, None])
+        fused.bias.copy_((bias - bn.running_mean) * scale + bn.bias)
+    return fused
+
+
+def inference_copy(model: AlphaZeroNet) -> AlphaZeroNet:
+    """An eval-mode copy of ``model`` with every batch norm folded into its conv.
+
+    Same outputs up to float rounding, with half the layers per forward pass:
+    on CPU the batch norms took about as long as the convolutions. Use it for
+    self-play and play, never for training (it has no batch norms to train).
+    """
+    fused = copy.deepcopy(model).eval()
+    stem_conv, stem_bn = fused.stem[0], fused.stem[1]
+    fused.stem[0], fused.stem[1] = _fold_bn(stem_conv, stem_bn), nn.Identity()
+    for block in fused.trunk:
+        block.conv1, block.bn1 = _fold_bn(block.conv1, block.bn1), nn.Identity()
+        block.conv2, block.bn2 = _fold_bn(block.conv2, block.bn2), nn.Identity()
+    for head in (fused.policy_head, fused.value_head):
+        head[0], head[1] = _fold_bn(head[0], head[1]), nn.Identity()
+    for p in fused.parameters():
+        p.requires_grad_(False)
+    return fused

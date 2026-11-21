@@ -9,7 +9,10 @@ same ``Node`` tree), kept in its own module so the original stays untouched.
   the new leaves are then evaluated in a single forward pass, the virtual loss
   is removed and the real values are backed up.
 - **Tree reuse.** After a move is played, the subtree under it becomes the next
-  root, so its visits aren't thrown away.
+  root, so its visits aren't thrown away. Self-play ``play_game`` only does this
+  with ``cfg.reuse_tree`` (off by default; see :class:`~alphazero.config.Config`).
+- **No board copies.** A leaf's encoding and legal moves are read off the shared
+  scratch board before it is unwound.
 - **Inference mode and fp16.** Network calls run under ``torch.inference_mode``,
   with float16 autocast on CUDA.
 
@@ -29,7 +32,7 @@ import torch
 from .config import Config
 from .game import ACTION_SIZE, ENCODER, encode_board, legal_actions, terminal_value
 from .mcts import Node, select_action
-from .network import AlphaZeroNet
+from .network import AlphaZeroNet, inference_copy
 from .selfplay import GameRecord
 
 # Loss added per pending visit, in value units ([-1, 1]).
@@ -49,10 +52,10 @@ class BatchedMCTS:
 
     # --- network -----------------------------------------------------------
 
-    def _evaluate(self, boards: list[chess.Board]) -> tuple[np.ndarray, np.ndarray]:
-        """Evaluate several positions in one forward pass. Returns (logits, values)."""
+    def _evaluate(self, planes: list[np.ndarray]) -> tuple[np.ndarray, np.ndarray]:
+        """Evaluate several encoded positions in one forward pass. Returns (logits, values)."""
         device = next(self.model.parameters()).device
-        x = torch.from_numpy(np.stack([encode_board(b) for b in boards])).to(device)
+        x = torch.from_numpy(np.stack(planes)).to(device)
         autocast = (torch.autocast("cuda", dtype=torch.float16)
                     if device.type == "cuda" else contextlib.nullcontext())
         with torch.inference_mode(), autocast:
@@ -60,8 +63,7 @@ class BatchedMCTS:
         return logits.float().cpu().numpy(), values.float().cpu().numpy()[:, 0]
 
     @staticmethod
-    def _expand(node: Node, board: chess.Board, logits: np.ndarray) -> None:
-        actions = legal_actions(board)
+    def _expand(node: Node, actions: list[tuple[int, chess.Move]], logits: np.ndarray) -> None:
         idx = np.fromiter((a for a, _ in actions), dtype=np.int64, count=len(actions))
         legal_logits = logits[idx]
         priors = np.exp(legal_logits - legal_logits.max())
@@ -107,8 +109,8 @@ class BatchedMCTS:
         root = self._reused_root(board) if self.reuse_tree else None
         if root is None:
             root = Node()
-            logits, _ = self._evaluate([board])
-            self._expand(root, board, logits[0])
+            logits, _ = self._evaluate([encode_board(board)])
+            self._expand(root, legal_actions(board), logits[0])
         if add_noise:
             self._add_dirichlet_noise(root)
         self._root = root
@@ -138,7 +140,9 @@ class BatchedMCTS:
         ``scratch`` must hold the root position and is restored before returning.
         Returns the depth of each leaf reached (one entry per finished simulation).
         """
-        pending: list[tuple[list[Node], chess.Board]] = []
+        # Each pending leaf keeps its path, encoded position and legal moves, read
+        # off ``scratch`` before it is unwound, so no board needs to be copied.
+        pending: list[tuple[list[Node], np.ndarray, list[tuple[int, chess.Move]]]] = []
         pending_ids: set[int] = set()
         depths: list[int] = []
 
@@ -149,26 +153,29 @@ class BatchedMCTS:
                 scratch.push(node.move)
                 path.append(node)
             depth = len(path) - 1
-            leaf_board = scratch.copy()
+
+            value = terminal_value(scratch)
+            queued = value is None and id(node) not in pending_ids
+            if queued:
+                leaf = (path, encode_board(scratch), legal_actions(scratch))
             for _ in range(depth):
                 scratch.pop()
 
-            value = terminal_value(leaf_board)
             if value is not None:
                 self._backup(path, value)
                 depths.append(depth)
-            elif id(node) in pending_ids:
+            elif not queued:
                 break  # the tree funnels back to a leaf already queued: evaluate now
             else:
                 self._virtual_loss(path, +1)
-                pending.append((path, leaf_board))
+                pending.append(leaf)
                 pending_ids.add(id(node))
 
         if pending:
-            logits, values = self._evaluate([b for _, b in pending])
-            for (path, leaf_board), lg, v in zip(pending, logits, values):
+            logits, values = self._evaluate([planes for _, planes, _ in pending])
+            for (path, _, actions), lg, v in zip(pending, logits, values):
                 self._virtual_loss(path, -1)
-                self._expand(path[-1], leaf_board, lg)
+                self._expand(path[-1], actions, lg)
                 self._backup(path, float(v))
                 depths.append(len(path) - 1)
         return depths
@@ -194,10 +201,15 @@ class BatchedMCTS:
 
 # --- self-play with the batched search --------------------------------------
 
-def play_game(model: AlphaZeroNet, cfg: Config, batch_size: int = 8) -> GameRecord:
-    """Same as :func:`alphazero.selfplay.play_game`, using :class:`BatchedMCTS`."""
+def play_game(model: AlphaZeroNet, cfg: Config, batch_size: int | None = None) -> GameRecord:
+    """Same as :func:`alphazero.selfplay.play_game`, using :class:`BatchedMCTS`.
+
+    ``batch_size`` defaults to ``cfg.mcts_batch_size``; the tree is kept between
+    moves only with ``cfg.reuse_tree``.
+    """
     board = chess.Board()
-    mcts = BatchedMCTS(model, cfg, batch_size=batch_size)
+    mcts = BatchedMCTS(model, cfg, batch_size=batch_size or cfg.mcts_batch_size,
+                       reuse_tree=cfg.reuse_tree)
     history: list[tuple[np.ndarray, np.ndarray, bool]] = []
     record = GameRecord()
 
@@ -226,10 +238,13 @@ def generate_games(
     cfg: Config,
     num_games: int | None = None,
     log: Callable[[str], None] = print,
-    batch_size: int = 8,
+    batch_size: int | None = None,
 ) -> list[GameRecord]:
+    """Play games one after another in this process (see :mod:`alphazero.parallel`
+    for several at once). The network is folded for inference first."""
     games = []
     n = num_games or cfg.games_per_iteration
+    model = inference_copy(model)
     for i in range(n):
         rec = play_game(model, cfg, batch_size)
         note = " (move limit, scored as draw)" if rec.adjudicated else ""

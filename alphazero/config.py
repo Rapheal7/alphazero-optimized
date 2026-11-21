@@ -25,6 +25,12 @@ class Config:
     c_puct: float = 1.5
     dirichlet_alpha: float = 0.3
     dirichlet_epsilon: float = 0.25
+    # Leaves evaluated per network call (BatchedMCTS, with virtual loss).
+    mcts_batch_size: int = 8
+    # Keep the searched subtree after each self-play move. Off by default, as in the
+    # AlphaZero pseudocode and lc0's self-play: carried-over visits were spent
+    # without root noise, and every move searches num_simulations anyway.
+    reuse_tree: bool = False
 
     # --- Self-play ---
     games_per_iteration: int = 4
@@ -32,6 +38,9 @@ class Config:
     temperature_moves: int = 30
     # Games longer than this many plies are stopped and scored as a draw.
     max_moves: int = 120
+    # Processes playing self-play games side by side. 0 = one per CPU core on the
+    # CPU, 1 (in this process) on a GPU. See alphazero/parallel.py.
+    selfplay_workers: int = 0
 
     # --- Training ---
     iterations: int = 5
@@ -69,6 +78,7 @@ PRESETS: dict[str, Config] = {
         num_simulations=8,
         games_per_iteration=1,
         max_moves=20,
+        selfplay_workers=1,
         iterations=1,
         train_steps_per_iteration=2,
         batch_size=16,
