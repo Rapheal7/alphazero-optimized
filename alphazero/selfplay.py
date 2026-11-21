@@ -133,3 +133,36 @@ def generate_games(
         log(f"  self-play game {i + 1}/{n}: {rec.describe()}")
         games.append(rec)
     return games
+
+
+def summarize_games(games: list[GameRecord]) -> tuple[str, dict[str, float]]:
+    """A one-line summary of an iteration's self-play, and the same numbers as metrics."""
+    n = len(games) or 1
+    finished = [g for g in games if not g.adjudicated]
+    wins = sum(g.white_value == 1.0 for g in finished)
+    losses = sum(g.white_value == -1.0 for g in finished)
+    stopped = len(games) - len(finished)
+    drawn = len(games) - wins - losses - stopped
+    terminations: dict[str, int] = {}
+    for g in games:
+        terminations[g.termination] = terminations.get(g.termination, 0) + 1
+    zs = [z for g in games for _, _, z in g.examples]
+    checks = [g for g in games if g.resign_check]
+    would = [g for g in checks if g.would_resign is not None]
+    metrics = {
+        "draw_rate": drawn / n,
+        "move_limit_rate": stopped / n,
+        "draw_target_fraction": sum(z == 0.0 for z in zs) / len(zs) if zs else float("nan"),
+        "mean_plies": sum(g.num_plies for g in games) / n,
+        "resign_rate": sum(g.resigned is not None for g in games) / n,
+        "false_resignations": float(sum(g.false_resignation for g in would)),
+        "resign_check_games": float(len(checks)),
+        "examples": float(len(zs)),
+    }
+    ends = ", ".join(f"{k} {v}" for k, v in sorted(terminations.items()))
+    text = (f"self-play: white +{wins} ={drawn} -{losses}, {stopped} at move limit ({ends}) | "
+            f"mean {metrics['mean_plies']:.0f} plies | {len(zs)} examples, "
+            f"{metrics['draw_target_fraction']:.0%} with a draw target | "
+            f"no-resign games {len(checks)}: {len(would)} would have resigned, "
+            f"{int(metrics['false_resignations'])} of them wrongly")
+    return text, metrics

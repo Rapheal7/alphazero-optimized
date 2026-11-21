@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import random
 import time
 from collections import deque
@@ -14,7 +15,7 @@ import torch.nn.functional as F
 from .checkpoint import checkpoint_path, latest_checkpoint, load_checkpoint, save_checkpoint
 from .config import Config, resolve_device
 from .network import AlphaZeroNet
-from .selfplay import Example, generate_games
+from .selfplay import Example, generate_games, summarize_games
 
 
 class ReplayBuffer:
@@ -40,12 +41,52 @@ class ReplayBuffer:
 
 
 def compute_loss(model: AlphaZeroNet, states, target_pis, target_zs) -> tuple[torch.Tensor, dict]:
-    """AlphaZero loss: (z - v)^2 - pi . log p. Weight decay is handled by the optimizer."""
+    """AlphaZero loss: (z - v)^2 - pi . log p. Weight decay is handled by the optimizer.
+
+    The metrics also split the policy loss (a cross-entropy) into the entropy of
+    the search targets, which no network can go below, and the KL divergence
+    from the targets to the network's policy, which is what training reduces.
+    ``value_baseline`` is the variance of the value targets: the value loss of
+    predicting their mean everywhere. A value loss near it means the value head
+    has learnt nothing beyond the average result.
+    """
     logits, values = model(states)
-    policy_loss = -(target_pis * F.log_softmax(logits, dim=1)).sum(dim=1).mean()
+    log_p = F.log_softmax(logits, dim=1)
+    policy_loss = -(target_pis * log_p).sum(dim=1).mean()
     value_loss = F.mse_loss(values, target_zs)
     loss = policy_loss + value_loss
-    return loss, {"loss": loss.item(), "policy_loss": policy_loss.item(), "value_loss": value_loss.item()}
+    with torch.no_grad():
+        target_entropy = -torch.special.xlogy(target_pis, target_pis).sum(dim=1).mean()
+        policy_entropy = -(log_p.exp() * log_p).sum(dim=1).mean()
+    return loss, {
+        "loss": loss.item(),
+        "policy_loss": policy_loss.item(),
+        "value_loss": value_loss.item(),
+        "target_entropy": target_entropy.item(),
+        "policy_kl": policy_loss.item() - target_entropy.item(),
+        "policy_entropy": policy_entropy.item(),
+        "value_baseline": target_zs.var(unbiased=False).item(),
+    }
+
+
+def format_losses(metrics: dict[str, float]) -> str:
+    m = {k: metrics.get(k, float("nan")) for k in (
+        "loss", "policy_loss", "target_entropy", "policy_kl", "policy_entropy",
+        "value_loss", "value_baseline")}
+    return (f"loss {m['loss']:.4f} (policy {m['policy_loss']:.4f} = target entropy "
+            f"{m['target_entropy']:.4f} + KL {m['policy_kl']:.4f}, net entropy "
+            f"{m['policy_entropy']:.4f}; value {m['value_loss']:.4f}, baseline "
+            f"{m['value_baseline']:.4f})")
+
+
+def steps_for(cfg: Config, new_examples: int) -> int:
+    """Gradient steps for an iteration that added ``new_examples`` to the buffer."""
+    if new_examples == 0:
+        return 0
+    if cfg.sample_reuse <= 0:
+        return cfg.train_steps_per_iteration
+    return max(1, min(cfg.train_steps_per_iteration,
+                      math.ceil(cfg.sample_reuse * new_examples / cfg.batch_size)))
 
 
 def train_step(model, optimizer, buffer: ReplayBuffer, batch_size: int, device) -> dict[str, float]:
@@ -109,19 +150,22 @@ def train(cfg: Config, resume: bool = False, log: Callable[[str], None] = print)
         t0 = time.time()
         log(f"Iteration {it + 1}/{cfg.iterations}")
         games = generate_games(model, cfg, log=log)
+        new_examples = sum(len(g.examples) for g in games)
         buffer.extend(ex for g in games for ex in g.examples)
+        summary, selfplay_metrics = summarize_games(games)
+        log(f"  {summary}")
 
         metrics: dict[str, float] = {}
-        for _ in range(cfg.train_steps_per_iteration if len(buffer) else 0):
+        steps = steps_for(cfg, new_examples)
+        for _ in range(steps):
             step = train_step(model, optimizer, buffer, cfg.batch_size, device)
             for k, v in step.items():
-                metrics[k] = metrics.get(k, 0.0) + v / cfg.train_steps_per_iteration
+                metrics[k] = metrics.get(k, 0.0) + v / steps
+        metrics.update(selfplay_metrics, train_steps=steps)
         scheduler.step()
 
         path = save_checkpoint(checkpoint_path(cfg.checkpoint_dir, it + 1), model, cfg, it + 1,
                                optimizer, scheduler, metrics)
-        log(f"  loss {metrics.get('loss', float('nan')):.4f} "
-            f"(policy {metrics.get('policy_loss', float('nan')):.4f}, "
-            f"value {metrics.get('value_loss', float('nan')):.4f}) | buffer {len(buffer)} | "
+        log(f"  {format_losses(metrics)} | {steps} steps | buffer {len(buffer)} | "
             f"lr {optimizer.param_groups[0]['lr']:.2e} | {time.time() - t0:.1f}s | saved {path}")
     return model

@@ -50,6 +50,7 @@ def cmd_train(args: argparse.Namespace) -> int:
         num_res_blocks=args.res_blocks,
         num_channels=args.channels,
         train_steps_per_iteration=args.train_steps,
+        sample_reuse=args.sample_reuse,
         batch_size=args.batch_size,
         max_moves=args.max_moves,
         material_scale=args.material_scale,
@@ -134,7 +135,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Fraction of moves searched in full (default 0.25; 1 = every move)")
     t.add_argument("--res-blocks", type=int)
     t.add_argument("--channels", type=int)
-    t.add_argument("--train-steps", type=int, help="Gradient steps per iteration")
+    t.add_argument("--train-steps", type=int, help="Gradient steps per iteration, at most")
+    t.add_argument("--sample-reuse", type=float,
+                   help="Draw each example about this many times (default 4; 0 = no limit)")
     t.add_argument("--batch-size", type=int)
     t.add_argument("--max-moves", type=int,
                    help="Plies before a self-play game is stopped and scored by material")

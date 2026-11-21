@@ -36,7 +36,7 @@ class Config:
     # average instead of 100). 1.0 searches every move in full.
     full_search_fraction: float = 0.25
     fast_simulations: int = 25
-    games_per_iteration: int = 4
+    games_per_iteration: int = 8
     # Sample moves in proportion to visit counts for this many plies, then play greedily.
     temperature_moves: int = 30
     # Games longer than this many plies are stopped and scored by material:
@@ -55,7 +55,12 @@ class Config:
 
     # --- Training ---
     iterations: int = 5
+    # Gradient steps per iteration, at most. Each iteration also stops after
+    # sample_reuse * (new examples) / batch_size steps, so each example is drawn
+    # about sample_reuse times over its life in the buffer instead of being
+    # memorised (0: always run train_steps_per_iteration).
     train_steps_per_iteration: int = 50
+    sample_reuse: float = 4.0
     batch_size: int = 64
     buffer_size: int = 20_000
     lr: float = 1e-3
