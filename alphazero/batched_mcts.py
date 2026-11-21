@@ -29,7 +29,7 @@ import torch
 from .config import Config
 from . import selfplay
 from .game import ACTION_SIZE, ENCODER, encode_board, legal_actions, terminal_value
-from .mcts import Node
+from .mcts import Node, root_value
 from .network import AlphaZeroNet
 from .selfplay import GameRecord
 
@@ -47,6 +47,8 @@ class BatchedMCTS:
         self._root: Node | None = None
         self._root_start_fen: str | None = None
         self._root_moves: list[chess.Move] = []
+        # Value of the last searched position for its side to move (see root_value).
+        self.root_value = 0.0
 
     # --- network -----------------------------------------------------------
 
@@ -186,6 +188,7 @@ class BatchedMCTS:
         remaining = num_simulations or self.cfg.num_simulations
         while remaining > 0:
             remaining -= len(self.simulate_batch(root, scratch, min(self.batch_size, remaining)))
+        self.root_value = root_value(root)
 
         visits = np.zeros(ACTION_SIZE, dtype=np.float32)
         for action, child in root.children.items():

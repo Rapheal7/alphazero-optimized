@@ -36,6 +36,13 @@ class Config:
     # games are always drawn).
     max_moves: int = 250
     material_scale: float = 5.0
+    # Resign when the root search value stays below resign_threshold for
+    # resign_moves of the same side's moves in a row (-1 or lower: never resign).
+    # resign_check_fraction of games are played out anyway, to count how often
+    # resigning would have thrown away a game that wasn't lost.
+    resign_threshold: float = -0.9
+    resign_moves: int = 3
+    resign_check_fraction: float = 0.1
 
     # --- Training ---
     iterations: int = 5

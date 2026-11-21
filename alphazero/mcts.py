@@ -36,10 +36,21 @@ class Node:
         return bool(self.children)
 
 
+def root_value(root: Node) -> float:
+    """The search's value of ``root`` for its side to move: the visit-weighted
+    mean of the children's Q (each stored for the root's side to move)."""
+    visits = sum(child.visit_count for child in root.children.values())
+    if not visits:
+        return 0.0
+    return sum(child.value_sum for child in root.children.values()) / visits
+
+
 class MCTS:
     def __init__(self, model: AlphaZeroNet, cfg: Config) -> None:
         self.model = model
         self.cfg = cfg
+        # Value of the last searched position for its side to move (see root_value).
+        self.root_value = 0.0
 
     def _expand(self, node: Node, board: chess.Board) -> float:
         """Add children with network priors. Returns the value for the side to move."""
@@ -109,6 +120,7 @@ class MCTS:
         scratch = board.copy()
         for _ in range(num_simulations or self.cfg.num_simulations):
             self.simulate(root, scratch)
+        self.root_value = root_value(root)
 
         visits = np.zeros(ACTION_SIZE, dtype=np.float32)
         for action, child in root.children.items():

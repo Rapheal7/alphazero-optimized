@@ -51,6 +51,7 @@ def cmd_train(args: argparse.Namespace) -> int:
         batch_size=args.batch_size,
         max_moves=args.max_moves,
         material_scale=args.material_scale,
+        resign_threshold=args.resign_threshold,
         lr=args.lr,
         checkpoint_dir=args.checkpoint_dir,
         device=args.device,
@@ -133,6 +134,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Plies before a self-play game is stopped and scored by material")
     t.add_argument("--material-scale", type=float,
                    help="Stopped games score tanh(material / scale); 0 = score them as draws")
+    t.add_argument("--resign-threshold", type=float,
+                   help="Resign below this root value (default -0.9; -1 = never resign)")
     t.add_argument("--lr", type=float)
     t.add_argument("--checkpoint-dir", default="checkpoints")
     t.add_argument("--device", default="auto", help="auto, cpu, cuda or mps")
