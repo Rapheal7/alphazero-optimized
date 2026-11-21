@@ -21,21 +21,46 @@ class Config:
     num_channels: int = 32
 
     # --- MCTS ---
-    num_simulations: int = 50
+    # Simulations per move in play, and for self-play's full searches.
+    num_simulations: int = 100
     c_puct: float = 1.5
     dirichlet_alpha: float = 0.3
     dirichlet_epsilon: float = 0.25
 
     # --- Self-play ---
-    games_per_iteration: int = 4
+    # Playout cap randomisation (from KataGo): only a random full_search_fraction
+    # of self-play moves get a full num_simulations search with root noise, and
+    # only those become training examples. The other moves are played after a
+    # fast_simulations search without noise. Policy targets keep the quality of
+    # a full search while games cost much less (here 44 simulations a move on
+    # average instead of 100). 1.0 searches every move in full.
+    full_search_fraction: float = 0.25
+    fast_simulations: int = 25
+    games_per_iteration: int = 8
     # Sample moves in proportion to visit counts for this many plies, then play greedily.
     temperature_moves: int = 30
-    # Games longer than this many plies are stopped and scored as a draw.
-    max_moves: int = 120
+    # Games longer than this many plies are stopped and scored by material:
+    # tanh(material balance in pawns / material_scale) for white, the negative for
+    # black. 0 scores them as draws (which taught the old value head that long
+    # games are always drawn).
+    max_moves: int = 250
+    material_scale: float = 5.0
+    # Resign when the root search value stays below resign_threshold for
+    # resign_moves of the same side's moves in a row (-1 or lower: never resign).
+    # resign_check_fraction of games are played out anyway, to count how often
+    # resigning would have thrown away a game that wasn't lost.
+    resign_threshold: float = -0.9
+    resign_moves: int = 3
+    resign_check_fraction: float = 0.1
 
     # --- Training ---
     iterations: int = 5
+    # Gradient steps per iteration, at most. Each iteration also stops after
+    # sample_reuse * (new examples) / batch_size steps, so each example is drawn
+    # about sample_reuse times over its life in the buffer instead of being
+    # memorised (0: always run train_steps_per_iteration).
     train_steps_per_iteration: int = 50
+    sample_reuse: float = 4.0
     batch_size: int = 64
     buffer_size: int = 20_000
     lr: float = 1e-3
@@ -67,6 +92,8 @@ PRESETS: dict[str, Config] = {
         num_res_blocks=1,
         num_channels=16,
         num_simulations=8,
+        full_search_fraction=0.5,
+        fast_simulations=4,
         games_per_iteration=1,
         max_moves=20,
         iterations=1,
@@ -80,6 +107,7 @@ PRESETS: dict[str, Config] = {
         num_res_blocks=10,
         num_channels=128,
         num_simulations=200,
+        fast_simulations=40,
         games_per_iteration=25,
         max_moves=300,
         iterations=100,

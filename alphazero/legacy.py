@@ -8,8 +8,8 @@ That notebook (``AlphaZeroAgentParallel``, files like
 - 14 input planes: 12 piece planes, side to move, and one plane that is 1 when
   *any* castling right remains. The piece and side-to-move planes match
   :func:`alphazero.game.encode_board`, so :class:`NotebookNet` takes the usual
-  18-plane input and converts it, and works with ``MCTS`` and ``BatchedMCTS``
-  unchanged.
+  input (:data:`~alphazero.game.NUM_PLANES` planes) and converts it, and works
+  with ``MCTS`` and ``BatchedMCTS`` unchanged.
 - Biased convolutions, no ReLU in the policy head, a 1-channel value head.
 
 The move encoding is the same 4544-action mapping as :data:`alphazero.game.ENCODER`.
@@ -55,7 +55,7 @@ class _NotebookResidualBlock(nn.Module):
 
 
 class NotebookNet(nn.Module):
-    """The notebook's ``ResNetAlphaZero`` (same parameter names), taking 18-plane input."""
+    """The notebook's ``ResNetAlphaZero`` (same parameter names), taking the package's input planes."""
 
     def __init__(self, num_res_blocks: int, num_channels: int, action_size: int = ACTION_SIZE) -> None:
         super().__init__()
@@ -83,7 +83,7 @@ class NotebookNet(nn.Module):
 
     @staticmethod
     def to_notebook_planes(x: torch.Tensor) -> torch.Tensor:
-        """18-plane package encoding -> the notebook's 14 planes."""
+        """Package encoding (planes 0-16 are used) -> the notebook's 14 planes."""
         any_castling = x[:, 13:17].amax(dim=1, keepdim=True)
         return torch.cat([x[:, :13], any_castling], dim=1)
 
