@@ -45,6 +45,8 @@ def cmd_train(args: argparse.Namespace) -> int:
         iterations=args.iterations,
         games_per_iteration=args.games,
         num_simulations=args.simulations,
+        fast_simulations=args.fast_simulations,
+        full_search_fraction=args.full_search_fraction,
         num_res_blocks=args.res_blocks,
         num_channels=args.channels,
         train_steps_per_iteration=args.train_steps,
@@ -125,7 +127,11 @@ def build_parser() -> argparse.ArgumentParser:
                    help="tiny = seconds, small = minutes on CPU (default), colab = GPU run")
     t.add_argument("--iterations", type=int)
     t.add_argument("--games", type=int, help="Self-play games per iteration")
-    t.add_argument("--simulations", type=int, help="MCTS simulations per move")
+    t.add_argument("--simulations", type=int, help="MCTS simulations for a full search")
+    t.add_argument("--fast-simulations", type=int,
+                   help="MCTS simulations for the other moves (not used as training examples)")
+    t.add_argument("--full-search-fraction", type=float,
+                   help="Fraction of moves searched in full (default 0.25; 1 = every move)")
     t.add_argument("--res-blocks", type=int)
     t.add_argument("--channels", type=int)
     t.add_argument("--train-steps", type=int, help="Gradient steps per iteration")

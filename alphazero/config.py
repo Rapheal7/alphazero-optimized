@@ -21,12 +21,21 @@ class Config:
     num_channels: int = 32
 
     # --- MCTS ---
-    num_simulations: int = 50
+    # Simulations per move in play, and for self-play's full searches.
+    num_simulations: int = 100
     c_puct: float = 1.5
     dirichlet_alpha: float = 0.3
     dirichlet_epsilon: float = 0.25
 
     # --- Self-play ---
+    # Playout cap randomisation (from KataGo): only a random full_search_fraction
+    # of self-play moves get a full num_simulations search with root noise, and
+    # only those become training examples. The other moves are played after a
+    # fast_simulations search without noise. Policy targets keep the quality of
+    # a full search while games cost much less (here 44 simulations a move on
+    # average instead of 100). 1.0 searches every move in full.
+    full_search_fraction: float = 0.25
+    fast_simulations: int = 25
     games_per_iteration: int = 4
     # Sample moves in proportion to visit counts for this many plies, then play greedily.
     temperature_moves: int = 30
@@ -78,6 +87,8 @@ PRESETS: dict[str, Config] = {
         num_res_blocks=1,
         num_channels=16,
         num_simulations=8,
+        full_search_fraction=0.5,
+        fast_simulations=4,
         games_per_iteration=1,
         max_moves=20,
         iterations=1,
@@ -91,6 +102,7 @@ PRESETS: dict[str, Config] = {
         num_res_blocks=10,
         num_channels=128,
         num_simulations=200,
+        fast_simulations=40,
         games_per_iteration=25,
         max_moves=300,
         iterations=100,

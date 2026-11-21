@@ -199,8 +199,13 @@ class BatchedMCTS:
 # --- self-play with the batched search --------------------------------------
 
 def play_game(model: AlphaZeroNet, cfg: Config, batch_size: int = 8) -> GameRecord:
-    """Same as :func:`alphazero.selfplay.play_game`, using :class:`BatchedMCTS`."""
-    return selfplay.play_game(model, cfg, BatchedMCTS(model, cfg, batch_size=batch_size))
+    """Same as :func:`alphazero.selfplay.play_game`, using :class:`BatchedMCTS`.
+
+    Without tree reuse: with playout cap randomisation, a reused subtree would
+    mix a fast search's visits into the next full search's policy target.
+    """
+    return selfplay.play_game(model, cfg,
+                              BatchedMCTS(model, cfg, batch_size=batch_size, reuse_tree=False))
 
 
 def generate_games(

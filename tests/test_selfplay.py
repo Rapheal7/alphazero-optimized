@@ -65,7 +65,7 @@ def black_is_lost(board):
 
 def test_side_resigns_after_resign_moves_low_values(tiny):
     model, cfg = tiny
-    cfg = cfg.updated(resign_check_fraction=0.0, resign_moves=3)
+    cfg = cfg.updated(resign_check_fraction=0.0, resign_moves=3, full_search_fraction=1.0)
     rec = play_game(model, cfg, ScriptedSearch(black_is_lost))
     # Black is to move at board.ply() 1, 3 and 5, and resigns at the third.
     assert rec.resigned == chess.BLACK and rec.termination == "resignation"
@@ -110,3 +110,62 @@ def test_search_reports_root_value_for_side_to_move(tiny):
     for search in (MCTS(model, cfg), BatchedMCTS(model, cfg)):
         search.search(board, add_noise=False, num_simulations=200)
         assert search.root_value > 0.5
+
+
+class RecordingSearch(ScriptedSearch):
+    def __init__(self):
+        super().__init__(lambda board: 0.0)
+        self.calls = []
+
+    def search(self, board, add_noise=True, num_simulations=None):
+        self.calls.append((add_noise, num_simulations))
+        return super().search(board, add_noise, num_simulations)
+
+
+@pytest.mark.parametrize("fraction", [0.0, 0.5, 1.0])
+def test_only_full_searches_become_training_examples(tiny, fraction):
+    model, cfg = tiny
+    cfg = cfg.updated(full_search_fraction=fraction, num_simulations=40, fast_simulations=10,
+                      max_moves=30, resign_threshold=-1.0)
+    search = RecordingSearch()
+    rec = play_game(model, cfg, search)
+    full = [call for call in search.calls if call == (True, 40)]
+    fast = [call for call in search.calls if call == (False, 10)]
+    assert len(full) + len(fast) == len(search.calls) == rec.num_plies
+    assert rec.full_searches == len(full) == len(rec.examples)
+    if fraction == 0.0:
+        assert not rec.examples
+    if fraction == 1.0:
+        assert len(rec.examples) == rec.num_plies
+    _targets_match_white_value(rec)
+
+
+@pytest.mark.filterwarnings("ignore:Detected call of `lr_scheduler.step")
+def test_training_survives_an_iteration_without_examples(tmp_path):
+    from alphazero.training import train
+
+    cfg = get_preset("tiny").updated(checkpoint_dir=str(tmp_path), full_search_fraction=0.0, seed=0)
+    train(cfg, log=lambda _: None)
+
+
+def test_full_search_targets_count_only_their_own_visits(tiny):
+    from alphazero.batched_mcts import play_game as batched_play_game
+
+    model, cfg = tiny
+    cfg = cfg.updated(full_search_fraction=0.5, num_simulations=16, fast_simulations=8,
+                      max_moves=12, resign_threshold=-1.0)
+    rec = batched_play_game(model, cfg, batch_size=4)
+    assert rec.examples
+    # pi = visits / 16 exactly, so every probability is a multiple of 1/16.
+    for _, pi, _ in rec.examples:
+        nonzero = pi[pi > 0] * 16
+        assert np.allclose(nonzero, np.round(nonzero), atol=1e-4)
+
+
+def test_fast_searches_never_exceed_full_ones(tiny):
+    model, cfg = tiny
+    cfg = cfg.updated(full_search_fraction=0.0, num_simulations=10, fast_simulations=25,
+                      max_moves=4, resign_threshold=-1.0)
+    search = RecordingSearch()
+    play_game(model, cfg, search)
+    assert {sims for _, sims in search.calls} == {10}

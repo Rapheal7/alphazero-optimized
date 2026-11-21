@@ -38,6 +38,8 @@ class GameRecord:
     resign_check: bool = False
     would_resign: chess.Color | None = None
     would_resign_ply: int = 0
+    # Moves searched with the full num_simulations (the ones in ``examples``).
+    full_searches: int = 0
 
     @property
     def false_resignation(self) -> bool:
@@ -57,7 +59,7 @@ class GameRecord:
             outcome = "and did not lose" if self.false_resignation else "and lost"
             note += (f" (no-resign game: {chess.COLOR_NAMES[self.would_resign]} would have "
                      f"resigned at ply {self.would_resign_ply} {outcome})")
-        return f"{self.result} in {self.num_plies} plies{note}"
+        return f"{self.result} in {self.num_plies} plies, {len(self.examples)} examples{note}"
 
 
 def play_game(model: AlphaZeroNet, cfg: Config, mcts=None) -> GameRecord:
@@ -73,7 +75,9 @@ def play_game(model: AlphaZeroNet, cfg: Config, mcts=None) -> GameRecord:
     low_streak = {chess.WHITE: 0, chess.BLACK: 0}
 
     while terminal_value(board) is None and board.ply() < cfg.max_moves:
-        visits = mcts.search(board, add_noise=True)
+        full = np.random.random() < cfg.full_search_fraction
+        sims = cfg.num_simulations if full else min(cfg.fast_simulations, cfg.num_simulations)
+        visits = mcts.search(board, add_noise=full, num_simulations=sims)
         if mcts.root_value < cfg.resign_threshold:
             low_streak[board.turn] += 1
         else:
@@ -84,10 +88,11 @@ def play_game(model: AlphaZeroNet, cfg: Config, mcts=None) -> GameRecord:
                 break
             if record.resign_check and record.would_resign is None:
                 record.would_resign, record.would_resign_ply = board.turn, board.ply()
-        pi = visits / visits.sum()
         temperature = 1.0 if board.ply() < cfg.temperature_moves else 0.0
         move = ENCODER.decode(select_action(visits, temperature))
-        history.append((encode_board(board), pi, board.turn))
+        if full:
+            history.append((encode_board(board), visits / visits.sum(), board.turn))
+            record.full_searches += 1
         record.moves.append(board.san(move))
         board.push(move)
 

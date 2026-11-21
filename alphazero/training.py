@@ -112,7 +112,7 @@ def train(cfg: Config, resume: bool = False, log: Callable[[str], None] = print)
         buffer.extend(ex for g in games for ex in g.examples)
 
         metrics: dict[str, float] = {}
-        for _ in range(cfg.train_steps_per_iteration):
+        for _ in range(cfg.train_steps_per_iteration if len(buffer) else 0):
             step = train_step(model, optimizer, buffer, cfg.batch_size, device)
             for k, v in step.items():
                 metrics[k] = metrics.get(k, 0.0) + v / cfg.train_steps_per_iteration
