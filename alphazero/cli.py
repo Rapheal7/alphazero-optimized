@@ -50,6 +50,7 @@ def cmd_train(args: argparse.Namespace) -> int:
         train_steps_per_iteration=args.train_steps,
         batch_size=args.batch_size,
         max_moves=args.max_moves,
+        material_scale=args.material_scale,
         lr=args.lr,
         checkpoint_dir=args.checkpoint_dir,
         device=args.device,
@@ -128,7 +129,10 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--channels", type=int)
     t.add_argument("--train-steps", type=int, help="Gradient steps per iteration")
     t.add_argument("--batch-size", type=int)
-    t.add_argument("--max-moves", type=int, help="Plies before a self-play game is scored as a draw")
+    t.add_argument("--max-moves", type=int,
+                   help="Plies before a self-play game is stopped and scored by material")
+    t.add_argument("--material-scale", type=float,
+                   help="Stopped games score tanh(material / scale); 0 = score them as draws")
     t.add_argument("--lr", type=float)
     t.add_argument("--checkpoint-dir", default="checkpoints")
     t.add_argument("--device", default="auto", help="auto, cpu, cuda or mps")

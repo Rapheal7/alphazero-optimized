@@ -9,7 +9,8 @@ import chess
 import numpy as np
 
 from .config import Config
-from .game import ENCODER, encode_board, game_outcome, terminal_value
+from .game import (ENCODER, adjudicated_value, encode_board, game_outcome, material_balance,
+                   terminal_value)
 from .mcts import MCTS, select_action
 from .network import AlphaZeroNet
 
@@ -22,11 +23,19 @@ class GameRecord:
     examples: list[Example] = field(default_factory=list)
     result: str = "*"
     num_plies: int = 0
+    # Stopped at cfg.max_moves and scored by material.
     adjudicated: bool = False
     moves: list[str] = field(default_factory=list)
+    # The score the training targets were built from, for white: 1, 0 or -1 for
+    # a finished game, the material score for an adjudicated one.
+    white_value: float = 0.0
+    material: int = 0
 
     def describe(self) -> str:
-        note = " (move limit, scored as draw)" if self.adjudicated else ""
+        note = ""
+        if self.adjudicated:
+            note = (f" (move limit, material {self.material:+d}, "
+                    f"scored {self.white_value:+.2f} for white)")
         return f"{self.result} in {self.num_plies} plies{note}"
 
 
@@ -48,12 +57,16 @@ def play_game(model: AlphaZeroNet, cfg: Config, mcts=None) -> GameRecord:
         board.push(move)
 
     outcome = game_outcome(board)
-    winner = outcome.winner if outcome else None
     record.adjudicated = outcome is None
     record.result = outcome.result() if outcome else "1/2-1/2"
     record.num_plies = board.ply()
+    record.material = material_balance(board)
+    if outcome is None:
+        record.white_value = adjudicated_value(board, cfg.material_scale)
+    elif outcome.winner is not None:
+        record.white_value = 1.0 if outcome.winner == chess.WHITE else -1.0
     for planes, pi, turn in history:
-        z = 0.0 if winner is None else (1.0 if turn == winner else -1.0)
+        z = record.white_value if turn == chess.WHITE else -record.white_value
         record.examples.append((planes, pi, z))
     return record
 

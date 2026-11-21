@@ -74,4 +74,4 @@ def test_batched_self_play_produces_examples():
     games = generate_games(model, cfg, num_games=1, log=lambda _: None)
     assert games[0].examples
     planes, pi, z = games[0].examples[0]
-    assert abs(pi.sum() - 1.0) < 1e-5 and z in (-1.0, 0.0, 1.0)
+    assert abs(pi.sum() - 1.0) < 1e-5 and -1.0 <= z <= 1.0  # stopped games: material score

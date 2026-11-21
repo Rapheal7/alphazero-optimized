@@ -119,6 +119,27 @@ def game_outcome(board: chess.Board) -> chess.Outcome | None:
     return None
 
 
+_PIECE_VALUES = {chess.PAWN: 1, chess.KNIGHT: 3, chess.BISHOP: 3, chess.ROOK: 5, chess.QUEEN: 9}
+
+
+def material_balance(board: chess.Board) -> int:
+    """White's material minus black's, in pawns (P=1, N=B=3, R=5, Q=9)."""
+    return sum(value * (len(board.pieces(piece_type, chess.WHITE))
+                        - len(board.pieces(piece_type, chess.BLACK)))
+               for piece_type, value in _PIECE_VALUES.items())
+
+
+def adjudicated_value(board: chess.Board, material_scale: float) -> float:
+    """Score for white of a game stopped before it ended: ``tanh(material / scale)``.
+
+    A pawn up is worth about +0.2 with the default scale of 5, a queen up about
+    +0.95. ``material_scale <= 0`` scores every stopped game as a draw.
+    """
+    if material_scale <= 0:
+        return 0.0
+    return float(np.tanh(material_balance(board) / material_scale))
+
+
 def terminal_value(board: chess.Board) -> float | None:
     """Value of a finished game for the side to move, or ``None`` if it isn't over.
 

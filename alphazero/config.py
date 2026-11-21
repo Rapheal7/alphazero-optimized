@@ -30,8 +30,12 @@ class Config:
     games_per_iteration: int = 4
     # Sample moves in proportion to visit counts for this many plies, then play greedily.
     temperature_moves: int = 30
-    # Games longer than this many plies are stopped and scored as a draw.
-    max_moves: int = 120
+    # Games longer than this many plies are stopped and scored by material:
+    # tanh(material balance in pawns / material_scale) for white, the negative for
+    # black. 0 scores them as draws (which taught the old value head that long
+    # games are always drawn).
+    max_moves: int = 250
+    material_scale: float = 5.0
 
     # --- Training ---
     iterations: int = 5
