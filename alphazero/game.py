@@ -40,6 +40,15 @@ class MoveEncoder:
                             for piece in _PROMOTION_PIECES:
                                 self._add(f"{f1}{r1}{f2}{r2}{piece}")
         self._moves = [chess.Move.from_uci(u) for u in self.index_to_uci]
+        # encode() is called for every legal move of every expanded node, so look
+        # indices up by (from, to, promotion) arithmetic instead of move.uci().
+        self._by_squares = [-1] * (64 * 64 * 7)
+        for index, move in enumerate(self._moves):
+            self._by_squares[self._key(move)] = index
+
+    @staticmethod
+    def _key(move: chess.Move) -> int:
+        return (move.from_square * 64 + move.to_square) * 7 + (move.promotion or 0)
 
     def _add(self, uci: str) -> None:
         self.uci_to_index[uci] = len(self.index_to_uci)
@@ -50,7 +59,10 @@ class MoveEncoder:
         return len(self.index_to_uci)
 
     def encode(self, move: chess.Move) -> int:
-        return self.uci_to_index[move.uci()]
+        index = self._by_squares[self._key(move)]
+        if index < 0:
+            raise KeyError(move.uci())
+        return index
 
     def decode(self, index: int) -> chess.Move:
         return self._moves[index]
@@ -66,6 +78,9 @@ _PIECE_PLANE = {
 }
 
 
+_PIECE_ORDER = sorted(_PIECE_PLANE, key=_PIECE_PLANE.get)
+
+
 def encode_board(board: chess.Board) -> np.ndarray:
     """Encode a position as a ``(NUM_PLANES, 8, 8)`` float32 array.
 
@@ -75,9 +90,12 @@ def encode_board(board: chess.Board) -> np.ndarray:
     the halfmove clock divided by 100.
     """
     planes = np.zeros((NUM_PLANES, 8, 8), dtype=np.float32)
-    for square, piece in board.piece_map().items():
-        rank, file = divmod(square, 8)
-        planes[_PIECE_PLANE[(piece.color, piece.piece_type)], 7 - rank, file] = 1.0
+    # Unpack the 12 piece bitboards (bit i = square i = a1, b1, ... h8) in one go,
+    # then flip the ranks so row 0 is rank 8. Much faster than board.piece_map().
+    bitboards = np.array([board.pieces_mask(pt, color) for color, pt in _PIECE_ORDER],
+                         dtype="<u8")  # little-endian, so bit i is square i
+    bits = np.unpackbits(bitboards.view(np.uint8), bitorder="little").reshape(12, 8, 8)
+    planes[:12] = bits[:, ::-1, :]
     if board.turn == chess.WHITE:
         planes[12] = 1.0
     planes[13] = float(board.has_kingside_castling_rights(chess.WHITE))
@@ -99,14 +117,37 @@ def legal_action_mask(board: chess.Board) -> np.ndarray:
     return mask
 
 
+def _repetition_possible(board: chess.Board) -> bool:
+    """Cheap necessary condition for ``board.can_claim_threefold_repetition()``.
+
+    A threefold claim (now, or after one legal move) needs some position since the
+    last capture or pawn move to have occurred at least twice already, and equal
+    positions have equal occupancy. If no occupancy repeats in that window, the
+    claim is impossible and python-chess's slow check (replay the history, then
+    try every legal move) can be skipped. That check took about a third of
+    self-play time.
+    """
+    window = min(board.halfmove_clock, len(board.move_stack))
+    seen = {board.occupied}
+    for state in board._stack[len(board._stack) - window:]:
+        if state.occupied in seen:
+            return True
+        seen.add(state.occupied)
+    return False
+
+
 def terminal_value(board: chess.Board) -> float | None:
     """Value of a finished game for the side to move, or ``None`` if it isn't over.
 
-    Uses ``claim_draw=True`` so threefold repetition and the fifty-move rule end
-    the game straight away rather than at fivefold / seventy-five moves.
+    Same result as ``board.outcome(claim_draw=True)``: threefold repetition and
+    the fifty-move rule end the game straight away rather than at fivefold /
+    seventy-five moves. The repetition check is skipped when it can't succeed.
     """
-    outcome = board.outcome(claim_draw=True)
+    outcome = board.outcome()
     if outcome is None:
+        if board.can_claim_fifty_moves() or (
+                _repetition_possible(board) and board.can_claim_threefold_repetition()):
+            return 0.0
         return None
     if outcome.winner is None:
         return 0.0

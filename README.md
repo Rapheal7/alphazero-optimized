@@ -13,6 +13,7 @@ alphazero/
   network.py     AlphaZeroNet: ResNet trunk, policy head (logits) and value head (tanh)
   mcts.py        PUCT tree search with Dirichlet noise at the root
   batched_mcts.py  Faster search: batched leaves with virtual loss, tree reuse, fp16 on GPU
+  parallel.py    Self-play in several worker processes (one per CPU core by default)
   selfplay.py    Self-play games -> (state, visit distribution, result) examples
   training.py    Replay buffer, loss, training loop, LR schedule, resume
   checkpoint.py  Save / load / find the latest checkpoint
@@ -20,7 +21,9 @@ alphazero/
   uci.py         UCI engine front end for chess GUIs (En Croissant, Cute Chess, Arena)
   cli.py         `alphazero train | play | evaluate | uci`
 scripts/         train.py, play.py, evaluate.py, uci.py: thin wrappers around the CLI
+                 bench_selfplay.py: self-play speed benchmark
                  alphazero-uci: launcher to point a chess GUI at
+docs/performance.md  Where self-play time goes, before/after numbers, design notes
 tests/           pytest: encoding, MCTS, UCI protocol, end-to-end tiny training run
 notebooks/
   AlphaZeroChess_Colab.ipynb   Clone + install + train / evaluate / play in Colab
@@ -100,6 +103,8 @@ After `pip install -e .`, the same commands are available as `alphazero train`, 
 | `tiny`  | 1 block × 16 ch    | 8         | 1          | 1          | tests, smoke runs     |
 | `small` | 2 blocks × 32 ch   | 50        | 4          | 5          | default, laptop CPU   |
 | `colab` | 10 blocks × 128 ch | 200       | 25         | 100        | GPU (Colab)           |
+
+Training self-play uses the batched search and plays games in parallel worker processes: by default one per CPU core on the CPU (capped at the games per iteration), and one in-process player on a GPU. Set `--workers N` to change it and `--mcts-batch N` for leaves per network call. With a fixed `--seed` and two or more workers, the games don't depend on how many workers there are. Each core plays 1.6 to 1.9 times as many plies per second as the old one-game-at-a-time loop, and every core plays its own games, so you can raise `--games` or `--iterations` at the same cost. See [docs/performance.md](docs/performance.md).
 
 Self-play games longer than `--max-moves` plies are stopped and scored as a draw. This keeps CPU runs short, because untrained networks rarely finish a game.
 
