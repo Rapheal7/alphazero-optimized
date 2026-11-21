@@ -12,7 +12,7 @@ import chess
 import chess.engine
 
 from .config import Config
-from .game import ENCODER
+from .game import ENCODER, game_outcome
 from .mcts import MCTS, select_action
 from .network import AlphaZeroNet
 
@@ -88,7 +88,7 @@ def play_match(white: Player, black: Player, max_moves: int = 300,
                on_move: Callable[[chess.Board, chess.Move], None] | None = None) -> chess.Board:
     """Play one game and return the final board. Over ``max_moves`` plies counts as a draw."""
     board = chess.Board()
-    while not board.is_game_over(claim_draw=True) and board.ply() < max_moves:
+    while game_outcome(board) is None and board.ply() < max_moves:
         player = white if board.turn == chess.WHITE else black
         move = player.choose_move(board)
         if on_move:
@@ -98,7 +98,7 @@ def play_match(white: Player, black: Player, max_moves: int = 300,
 
 
 def game_result(board: chess.Board) -> str:
-    outcome = board.outcome(claim_draw=True)
+    outcome = game_outcome(board)
     return outcome.result() if outcome else "1/2-1/2"
 
 

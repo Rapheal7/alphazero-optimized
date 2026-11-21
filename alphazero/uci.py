@@ -315,7 +315,9 @@ class UCIEngine:
     def cmd_go(self, args: list[str]) -> None:
         self._stop_search()
         self._ensure_model()
-        if self.board.is_game_over(claim_draw=True):
+        from .game import game_outcome
+
+        if game_outcome(self.board) is not None:
             self.info_string("position is already decided; no legal search")
             self.send("bestmove 0000")
             return

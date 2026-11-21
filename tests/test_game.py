@@ -7,6 +7,7 @@ from alphazero.game import (
     ENCODER,
     NUM_PLANES,
     encode_board,
+    game_outcome,
     legal_action_mask,
     terminal_value,
 )
@@ -56,3 +57,32 @@ def test_terminal_values():
     assert terminal_value(mated) == -1.0  # side to move has been mated
     stalemate = chess.Board("7k/5Q2/6K1/8/8/8/8/8 b - - 0 1")
     assert terminal_value(stalemate) == 0.0
+
+
+def _shuffle_knights(plies: int) -> chess.Board:
+    board = chess.Board()
+    for uci in ["g1f3", "g8f6", "f3g1", "f6g8"] * 2:
+        if board.ply() == plies:
+            break
+        board.push_uci(uci)
+    return board
+
+
+def test_repetition_is_a_draw_only_once_it_has_happened():
+    # Black could claim threefold by playing ...Ng8, but hasn't: the game goes on.
+    board = _shuffle_knights(7)
+    assert board.outcome(claim_draw=True) is not None
+    assert game_outcome(board) is None
+    assert terminal_value(board) is None
+    board.push_uci("f6g8")  # third occurrence of the starting position
+    assert game_outcome(board).termination == chess.Termination.THREEFOLD_REPETITION
+    assert terminal_value(board) == 0.0
+
+
+def test_fifty_move_rule_is_a_draw_only_once_it_has_happened():
+    board = chess.Board("7k/8/8/8/8/8/8/R6K w - - 99 80")
+    assert board.can_claim_fifty_moves()
+    assert terminal_value(board) is None
+    board.push_uci("a1a2")
+    assert game_outcome(board).termination == chess.Termination.FIFTY_MOVES
+    assert terminal_value(board) == 0.0

@@ -99,13 +99,32 @@ def legal_action_mask(board: chess.Board) -> np.ndarray:
     return mask
 
 
+def game_outcome(board: chess.Board) -> chess.Outcome | None:
+    """How the game has ended, or ``None`` if it hasn't.
+
+    Threefold repetition and the fifty-move rule end the game as soon as they
+    have actually happened, rather than waiting for fivefold / seventy-five
+    moves. Unlike ``board.outcome(claim_draw=True)``, a position isn't a draw
+    just because the side to move *could* repeat or reach move fifty with its
+    next move: that would score winning positions as draws whenever a
+    repeating move exists, and pull self-play towards draws.
+    """
+    outcome = board.outcome()
+    if outcome is not None:
+        return outcome
+    if board.is_repetition(3):
+        return chess.Outcome(chess.Termination.THREEFOLD_REPETITION, None)
+    if board.is_fifty_moves():
+        return chess.Outcome(chess.Termination.FIFTY_MOVES, None)
+    return None
+
+
 def terminal_value(board: chess.Board) -> float | None:
     """Value of a finished game for the side to move, or ``None`` if it isn't over.
 
-    Uses ``claim_draw=True`` so threefold repetition and the fifty-move rule end
-    the game straight away rather than at fivefold / seventy-five moves.
+    See :func:`game_outcome` for when repetitions and the fifty-move rule count.
     """
-    outcome = board.outcome(claim_draw=True)
+    outcome = game_outcome(board)
     if outcome is None:
         return None
     if outcome.winner is None:

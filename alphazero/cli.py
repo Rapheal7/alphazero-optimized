@@ -63,13 +63,14 @@ def cmd_play(args: argparse.Namespace) -> int:
     import chess
 
     from .evaluation import MCTSPlayer, parse_human_move
+    from .game import game_outcome
 
     model, cfg = _load(args)
     ai = MCTSPlayer(model, cfg, args.simulations)
     human_color = chess.WHITE if args.color == "white" else chess.BLACK
     board = chess.Board()
     print("Enter moves in SAN (Nf3) or UCI (g1f3). Type 'quit' to stop.\n")
-    while not board.is_game_over(claim_draw=True):
+    while game_outcome(board) is None:
         print(board.unicode(borders=True, orientation=human_color), "\n")
         if board.turn == human_color:
             try:
@@ -89,7 +90,7 @@ def cmd_play(args: argparse.Namespace) -> int:
             print(f"AlphaZero plays {board.san(move)}")
         board.push(move)
     print(board.unicode(borders=True, orientation=human_color))
-    outcome = board.outcome(claim_draw=True)
+    outcome = game_outcome(board)
     print(f"\nGame over: {outcome.result()} ({outcome.termination.name.lower()})")
     return 0
 
