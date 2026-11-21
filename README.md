@@ -83,9 +83,10 @@ python scripts/train.py --resume --iterations 10
 # Override anything
 python scripts/train.py --simulations 100 --games 8 --res-blocks 4 --channels 64 --device cuda
 
-# Evaluate the latest checkpoint against a random mover or Stockfish
+# Evaluate the latest checkpoint against a random mover, Stockfish or another checkpoint
 python scripts/evaluate.py --games 4
 python scripts/evaluate.py --opponent stockfish --skill-level 0 --games 4
+python scripts/evaluate.py --opponent checkpoint --opponent-checkpoint checkpoints/checkpoint_iter_0001.pt
 
 # Play against it in the terminal (SAN like Nf3 or UCI like g1f3)
 python scripts/play.py --color white --simulations 200
@@ -149,7 +150,8 @@ The tests check that the move encoding covers every legal move with no collision
 
 - **Encoding:** 12 piece planes, side to move, 4 castling-rights planes, the halfmove clock and 2 repetition planes (the position has occurred once / twice before), from White's point of view. The policy covers every from/to square pair, plus a separate index for each promotion piece.
 - **Search:** PUCT selection `Q + c_puct · P · √N_parent / (1 + N)`. The network gives priors and a value at each new leaf, and finished games use their true result. Values flip sign at each ply on the way back up. Dirichlet noise is added at the root during self-play only.
-- **Training targets:** the root visit distribution (policy) and the game result from the point of view of the side to move (value). Loss is `(z − v)² − π·log p`, using Adam with weight decay and a step LR schedule.
+- **Self-play:** only a random 25% of moves get a full search (`num_simulations`, with root noise) and become training examples; the rest get a quick `fast_simulations` search (playout cap randomisation). A side resigns when its search value stays below −0.9 for 3 of its moves; 10% of games are played out anyway, to count false resignations. Games still going at `max_moves` (250 plies) are scored by material, `tanh(material / 5)`.
+- **Training targets:** the root visit distribution (policy) and the game result from the point of view of the side to move (value). Loss is `(z − v)² − π·log p`, using Adam with weight decay and a step LR schedule. Each example is drawn about `sample_reuse` (4) times. The log splits the policy loss into the targets' entropy (its floor) and the KL divergence that training reduces, and shows the value loss next to its baseline (the variance of the targets).
 
 ### Faster search (`batched_mcts.py`)
 

@@ -88,3 +88,14 @@ def test_iteration_summary_counts_results():
     assert "white +1 =1 -1, 1 at move limit" in text
     assert m["draw_rate"] == 0.25 and m["move_limit_rate"] == 0.25 and m["resign_rate"] == 0.25
     assert m["draw_target_fraction"] == 0.5 and m["false_resignations"] == 1.0
+
+
+def test_cli_evaluate_against_another_checkpoint(tmp_path, capsys):
+    ck = str(tmp_path)
+    assert main(["train", "--preset", "tiny", "--checkpoint-dir", ck, "--seed", "1"]) == 0
+    first = str(latest_checkpoint(tmp_path))
+    assert main(["evaluate", "--checkpoint", first, "--opponent", "checkpoint",
+                 "--opponent-checkpoint", first, "--games", "2",
+                 "--simulations", "4", "--max-moves", "10"]) == 0
+    out = capsys.readouterr().out
+    assert "Opponent (B)" in out and "Result vs checkpoint" in out

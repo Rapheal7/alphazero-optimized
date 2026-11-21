@@ -107,6 +107,17 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
     player = MCTSPlayer(model, cfg, args.simulations)
     if args.opponent == "random":
         stats = evaluate(player, RandomPlayer(), args.games, args.max_moves)
+    elif args.opponent == "checkpoint":
+        from .checkpoint import load_model
+
+        if not args.opponent_checkpoint:
+            print("--opponent checkpoint needs --opponent-checkpoint PATH", file=sys.stderr)
+            return 1
+        other, other_cfg, other_ckpt = load_model(args.opponent_checkpoint, resolve_device(args.device))
+        print(f"Opponent: {args.opponent_checkpoint} (iteration {other_ckpt['iteration']}).")
+        # Same search budget for both sides, so the match compares the networks.
+        opponent = MCTSPlayer(other, other_cfg, player.num_simulations, name="Opponent")
+        stats = evaluate(player, opponent, args.games, args.max_moves)
     else:
         try:
             opponent = StockfishPlayer(args.stockfish_path, args.skill_level, args.stockfish_time)
@@ -159,7 +170,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     e = sub.add_parser("evaluate", help="Match a model against a random mover or Stockfish")
     _add_model_args(e)
-    e.add_argument("--opponent", choices=["random", "stockfish"], default="random")
+    e.add_argument("--opponent", choices=["random", "stockfish", "checkpoint"], default="random")
+    e.add_argument("--opponent-checkpoint", help="Checkpoint to play against with --opponent checkpoint")
     e.add_argument("--games", type=int, default=4)
     e.add_argument("--max-moves", type=int, default=200)
     e.add_argument("--stockfish-path")
