@@ -25,10 +25,16 @@ class GameRecord:
     adjudicated: bool = False
     moves: list[str] = field(default_factory=list)
 
+    def describe(self) -> str:
+        note = " (move limit, scored as draw)" if self.adjudicated else ""
+        return f"{self.result} in {self.num_plies} plies{note}"
 
-def play_game(model: AlphaZeroNet, cfg: Config) -> GameRecord:
+
+def play_game(model: AlphaZeroNet, cfg: Config, mcts=None) -> GameRecord:
+    """Play one self-play game. ``mcts`` defaults to a plain :class:`MCTS`; any
+    object with the same ``search`` method works (e.g. ``BatchedMCTS``)."""
     board = chess.Board()
-    mcts = MCTS(model, cfg)
+    mcts = mcts or MCTS(model, cfg)
     history: list[tuple[np.ndarray, np.ndarray, bool]] = []
     record = GameRecord()
 
@@ -57,12 +63,12 @@ def generate_games(
     cfg: Config,
     num_games: int | None = None,
     log: Callable[[str], None] = print,
+    play: Callable[[AlphaZeroNet, Config], GameRecord] = play_game,
 ) -> list[GameRecord]:
     games = []
     n = num_games or cfg.games_per_iteration
     for i in range(n):
-        rec = play_game(model, cfg)
-        note = " (move limit, scored as draw)" if rec.adjudicated else ""
-        log(f"  self-play game {i + 1}/{n}: {rec.result} in {rec.num_plies} plies{note}")
+        rec = play(model, cfg)
+        log(f"  self-play game {i + 1}/{n}: {rec.describe()}")
         games.append(rec)
     return games

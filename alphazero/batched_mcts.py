@@ -27,9 +27,9 @@ import numpy as np
 import torch
 
 from .config import Config
-from .game import (ACTION_SIZE, ENCODER, encode_board, game_outcome, legal_actions,
-                   terminal_value)
-from .mcts import Node, select_action
+from . import selfplay
+from .game import ACTION_SIZE, ENCODER, encode_board, legal_actions, terminal_value
+from .mcts import Node
 from .network import AlphaZeroNet
 from .selfplay import GameRecord
 
@@ -197,29 +197,7 @@ class BatchedMCTS:
 
 def play_game(model: AlphaZeroNet, cfg: Config, batch_size: int = 8) -> GameRecord:
     """Same as :func:`alphazero.selfplay.play_game`, using :class:`BatchedMCTS`."""
-    board = chess.Board()
-    mcts = BatchedMCTS(model, cfg, batch_size=batch_size)
-    history: list[tuple[np.ndarray, np.ndarray, bool]] = []
-    record = GameRecord()
-
-    while terminal_value(board) is None and board.ply() < cfg.max_moves:
-        visits = mcts.search(board, add_noise=True)
-        pi = visits / visits.sum()
-        temperature = 1.0 if board.ply() < cfg.temperature_moves else 0.0
-        move = ENCODER.decode(select_action(visits, temperature))
-        history.append((encode_board(board), pi, board.turn))
-        record.moves.append(board.san(move))
-        board.push(move)
-
-    outcome = game_outcome(board)
-    winner = outcome.winner if outcome else None
-    record.adjudicated = outcome is None
-    record.result = outcome.result() if outcome else "1/2-1/2"
-    record.num_plies = board.ply()
-    for planes, pi, turn in history:
-        z = 0.0 if winner is None else (1.0 if turn == winner else -1.0)
-        record.examples.append((planes, pi, z))
-    return record
+    return selfplay.play_game(model, cfg, BatchedMCTS(model, cfg, batch_size=batch_size))
 
 
 def generate_games(
@@ -229,11 +207,5 @@ def generate_games(
     log: Callable[[str], None] = print,
     batch_size: int = 8,
 ) -> list[GameRecord]:
-    games = []
-    n = num_games or cfg.games_per_iteration
-    for i in range(n):
-        rec = play_game(model, cfg, batch_size)
-        note = " (move limit, scored as draw)" if rec.adjudicated else ""
-        log(f"  self-play game {i + 1}/{n}: {rec.result} in {rec.num_plies} plies{note}")
-        games.append(rec)
-    return games
+    return selfplay.generate_games(model, cfg, num_games, log,
+                                   play=lambda m, c: play_game(m, c, batch_size))
