@@ -31,3 +31,15 @@ def test_finds_mate_in_one_with_untrained_network():
     visits = MCTS(model, cfg).search(board, add_noise=False, num_simulations=200)
     move = ENCODER.decode(select_action(visits, temperature=0.0))
     assert move == chess.Move.from_uci("a1a8")
+
+
+def test_searches_position_where_a_repetition_could_be_claimed():
+    # Black can repeat with ...Ng8, which only makes this a claimable draw, not
+    # a finished game: search must still run, and ...Ng8 is just one option.
+    model, cfg = _untrained()
+    board = chess.Board()
+    for uci in ["g1f3", "g8f6", "f3g1", "f6g8", "g1f3", "g8f6", "f3g1"]:
+        board.push_uci(uci)
+    visits = MCTS(model, cfg).search(board, num_simulations=30)
+    assert visits.sum() == 30
+    assert np.count_nonzero(visits) > 1

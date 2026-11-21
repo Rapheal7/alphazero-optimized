@@ -9,7 +9,7 @@ import chess
 import numpy as np
 
 from .config import Config
-from .game import ENCODER, encode_board, terminal_value
+from .game import ENCODER, encode_board, game_outcome, terminal_value
 from .mcts import MCTS, select_action
 from .network import AlphaZeroNet
 
@@ -41,7 +41,7 @@ def play_game(model: AlphaZeroNet, cfg: Config) -> GameRecord:
         record.moves.append(board.san(move))
         board.push(move)
 
-    outcome = board.outcome(claim_draw=True)
+    outcome = game_outcome(board)
     winner = outcome.winner if outcome else None
     record.adjudicated = outcome is None
     record.result = outcome.result() if outcome else "1/2-1/2"

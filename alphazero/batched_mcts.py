@@ -27,7 +27,8 @@ import numpy as np
 import torch
 
 from .config import Config
-from .game import ACTION_SIZE, ENCODER, encode_board, legal_actions, terminal_value
+from .game import (ACTION_SIZE, ENCODER, encode_board, game_outcome, legal_actions,
+                   terminal_value)
 from .mcts import Node, select_action
 from .network import AlphaZeroNet
 from .selfplay import GameRecord
@@ -210,7 +211,7 @@ def play_game(model: AlphaZeroNet, cfg: Config, batch_size: int = 8) -> GameReco
         record.moves.append(board.san(move))
         board.push(move)
 
-    outcome = board.outcome(claim_draw=True)
+    outcome = game_outcome(board)
     winner = outcome.winner if outcome else None
     record.adjudicated = outcome is None
     record.result = outcome.result() if outcome else "1/2-1/2"
